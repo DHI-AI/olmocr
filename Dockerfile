@@ -49,4 +49,4 @@ RUN apt update && apt install -y pciutils nvidia-utils-550
 
 EXPOSE 5000
 
-CMD ["python", "api.py"]
+CMD ["python", "app.py"]
