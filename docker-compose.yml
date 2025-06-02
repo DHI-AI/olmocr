@@ -18,3 +18,10 @@ services:
       - ./models:/app/models
     ports:
       - 5001:5001
+    networks:
+      - dhi
+
+networks:
+  dhi:
+    name: dhi
+    driver: bridge
