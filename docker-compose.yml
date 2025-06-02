@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  pdf2text_api_1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PAT: ${PAT_TOKEN}
+    image: pdf2text_api
+    #name the container
+    container_name: pdf2text_api_1
+    environment:
+      - PORT=5000
+    env_file: .env
+    volumes:
+      - ./config:/app/config
+      - ./models:/app/models
+    ports:
+      - 5000:5000

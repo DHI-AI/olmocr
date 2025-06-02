@@ -45,5 +45,8 @@ RUN playwright install chromium
 COPY olmocr olmocr
 COPY scripts scripts
 
-RUN python3 -m sglang.launch_server --help
-RUN python3 -m olmocr.pipeline --help
+RUN apt update && apt install -y pciutils nvidia-utils-550 
+
+EXPOSE 5000
+
+CMD ["python", "api.py"]

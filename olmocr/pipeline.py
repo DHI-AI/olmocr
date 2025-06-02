@@ -968,68 +968,92 @@ def print_stats(args, root_work_queue):
     print(f"Total tokens in long context documents: {long_context_tokens_total:,}")
 
 
-async def main():
-    parser = argparse.ArgumentParser(description="Manager for running millions of PDFs through a batch inference pipeline")
-    parser.add_argument(
-        "workspace",
-        help="The filesystem path where work will be stored, can be a local folder, or an s3 path if coordinating work with many workers, s3://bucket/prefix/ ",
-    )
-    parser.add_argument(
-        "--pdfs",
-        nargs="*",
-        help="Path to add pdfs stored in s3 to the workspace, can be a glob path s3://bucket/prefix/*.pdf or path to file containing list of pdf paths",
-        default=None,
-    )
-    parser.add_argument("--workspace_profile", help="S3 configuration profile for accessing the workspace", default=None)
-    parser.add_argument("--pdf_profile", help="S3 configuration profile for accessing the raw pdf documents", default=None)
-    parser.add_argument("--pages_per_group", type=int, default=500, help="Aiming for this many pdf pages per work item group")
-    parser.add_argument("--max_page_retries", type=int, default=8, help="Max number of times we will retry rendering a page")
-    parser.add_argument("--max_page_error_rate", type=float, default=0.004, help="Rate of allowable failed pages in a document, 1/250 by default")
-    parser.add_argument("--workers", type=int, default=8, help="Number of workers to run at a time")
-    parser.add_argument("--apply_filter", action="store_true", help="Apply basic filtering to English pdfs which are not forms, and not likely seo spam")
-    parser.add_argument("--stats", action="store_true", help="Instead of running any job, reports some statistics about the current workspace")
-    parser.add_argument("--markdown", action="store_true", help="Also write natural text to markdown files preserving the folder structure of the input pdfs")
-
-    # Model parameters
-    parser.add_argument(
-        "--model",
-        help="List of paths where you can find the model to convert this pdf. You can specify several different paths here, and the script will try to use the one which is fastest to access",
-        default="allenai/olmOCR-7B-0225-preview",
-    )
-    parser.add_argument("--model_max_context", type=int, default="8192", help="Maximum context length that the model was fine tuned under")
-    parser.add_argument("--model_chat_template", type=str, default="qwen2-vl", help="Chat template to pass to sglang server")
-    parser.add_argument("--target_longest_image_dim", type=int, help="Dimension on longest side to use for rendering the pdf pages", default=1024)
-    parser.add_argument("--target_anchor_text_len", type=int, help="Maximum amount of anchor text to use (characters)", default=6000)
-
-    # Beaker/job running stuff
-    parser.add_argument("--beaker", action="store_true", help="Submit this job to beaker instead of running locally")
-    parser.add_argument("--beaker_workspace", help="Beaker workspace to submit to", default="ai2/olmocr")
-    parser.add_argument(
-        "--beaker_cluster",
-        help="Beaker clusters you want to run on",
-        default=["ai2/jupiter-cirrascale-2", "ai2/ceres-cirrascale", "ai2/neptune-cirrascale", "ai2/saturn-cirrascale", "ai2/augusta-google-1"],
-    )
-    parser.add_argument("--beaker_gpus", type=int, default=1, help="Number of gpu replicas to run")
-    parser.add_argument("--beaker_priority", type=str, default="normal", help="Beaker priority level for the job")
-    parser.add_argument("--port", type=int, default=30024, help="Port to use for the SGLang server")
-    args = parser.parse_args()
+async def main(
+    workspace,
+    pdfs=None,
+    workspace_profile=None,
+    pdf_profile=None,
+    pages_per_group=500,
+    max_page_retries=8,
+    max_page_error_rate=0.004,
+    workers=8,
+    apply_filter=False,
+    stats=False,
+    markdown=False,
+    model="allenai/olmOCR-7B-0225-preview",
+    model_max_context=8192,
+    model_chat_template="qwen2-vl",
+    target_longest_image_dim=1024,
+    target_anchor_text_len=6000,
+    beaker=False,
+    beaker_workspace="ai2/olmocr",
+    beaker_cluster=None,
+    beaker_gpus=1,
+    beaker_priority="normal",
+    port=30024
+):
+    """
+    Manager for running millions of PDFs through a batch inference pipeline
+    
+    Args:
+        workspace: The filesystem path where work will be stored, can be a local folder, 
+                  or an s3 path if coordinating work with many workers, s3://bucket/prefix/
+        pdfs: Path to add pdfs stored in s3 to the workspace, can be a glob path 
+             s3://bucket/prefix/*.pdf or path to file containing list of pdf paths
+        workspace_profile: S3 configuration profile for accessing the workspace
+        pdf_profile: S3 configuration profile for accessing the raw pdf documents
+        pages_per_group: Aiming for this many pdf pages per work item group
+        max_page_retries: Max number of times we will retry rendering a page
+        max_page_error_rate: Rate of allowable failed pages in a document, 1/250 by default
+        workers: Number of workers to run at a time
+        apply_filter: Apply basic filtering to English pdfs which are not forms, and not likely seo spam
+        stats: Instead of running any job, reports some statistics about the current workspace
+        markdown: Also write natural text to markdown files preserving the folder structure of the input pdfs
+        model: List of paths where you can find the model to convert this pdf
+        model_max_context: Maximum context length that the model was fine tuned under
+        model_chat_template: Chat template to pass to sglang server
+        target_longest_image_dim: Dimension on longest side to use for rendering the pdf pages
+        target_anchor_text_len: Maximum amount of anchor text to use (characters)
+        beaker: Submit this job to beaker instead of running locally
+        beaker_workspace: Beaker workspace to submit to
+        beaker_cluster: Beaker clusters you want to run on
+        beaker_gpus: Number of gpu replicas to run
+        beaker_priority: Beaker priority level for the job
+        port: Port to use for the SGLang server
+    """
+    
+    # Set default beaker_cluster if None
+    if beaker_cluster is None:
+        beaker_cluster = [
+            "ai2/jupiter-cirrascale-2", 
+            "ai2/ceres-cirrascale", 
+            "ai2/neptune-cirrascale", 
+            "ai2/saturn-cirrascale", 
+            "ai2/augusta-google-1"
+        ]
 
     global workspace_s3, pdf_s3
-    # set the global SGLANG_SERVER_PORT from args
+    # set the global SGLANG_SERVER_PORT from parameters
     global SGLANG_SERVER_PORT
-    SGLANG_SERVER_PORT = args.port
+    SGLANG_SERVER_PORT = port
 
     # setup the job to work in beaker environment, load secrets, adjust logging, etc.
     if "BEAKER_JOB_NAME" in os.environ:
         sglang_logger.addHandler(console_handler)
         cred_path = os.path.join(os.path.expanduser("~"), ".aws", "credentials")
         os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-        with open(cred_path, "w") as f:
-            f.write(os.environ.get("AWS_CREDENTIALS_FILE"))
+        aws_credentials = os.environ.get("AWS_CREDENTIALS_FILE")
+        if aws_credentials:
+            with open(cred_path, "w") as f:
+                f.write(aws_credentials)
+        
         cred_path = os.path.join(os.path.expanduser("~"), ".gcs", "credentials")
         os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-        with open(cred_path, "w") as f:
-            f.write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE"))
+        gcs_credentials = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE")
+        if gcs_credentials:
+            with open(cred_path, "w") as f:
+                f.write(gcs_credentials)
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
         workspace_s3 = boto3.client("s3")
         pdf_s3 = boto3.client("s3")
@@ -1041,28 +1065,28 @@ async def main():
         logger.info(f"Beaker job sleeping for {sleep_time} seconds to stagger model downloads")
         await asyncio.sleep(sleep_time)
 
-    if args.workspace_profile:
-        workspace_session = boto3.Session(profile_name=args.workspace_profile)
+    if workspace_profile:
+        workspace_session = boto3.Session(profile_name=workspace_profile)
         workspace_s3 = workspace_session.client("s3")
 
-    if args.pdf_profile:
-        pdf_session = boto3.Session(profile_name=args.pdf_profile)
+    if pdf_profile:
+        pdf_session = boto3.Session(profile_name=pdf_profile)
         pdf_s3 = pdf_session.client("s3")
 
     # We need poppler to load the initial pdfs, even if we are not processing them here
     check_poppler_version()
 
     # Create work queue
-    if args.workspace.startswith("s3://"):
-        work_queue = S3WorkQueue(workspace_s3, args.workspace)
+    if workspace.startswith("s3://"):
+        work_queue = S3WorkQueue(workspace_s3, workspace)
     else:
-        work_queue = LocalWorkQueue(args.workspace)
+        work_queue = LocalWorkQueue(workspace)
 
-    if args.pdfs:
-        logger.info("Got --pdfs argument, going to add to the work queue")
+    if pdfs:
+        logger.info("Got pdfs parameter, going to add to the work queue")
         pdf_work_paths = set()
 
-        for pdf_path in args.pdfs:
+        for pdf_path in pdfs:
             # Expand s3 paths
             if pdf_path.startswith("s3://"):
                 logger.info(f"Expanding s3 glob at {pdf_path}")
@@ -1089,7 +1113,7 @@ async def main():
                 else:
                     raise ValueError(f"Unsupported file extension for {pdf_path}")
             else:
-                raise ValueError("pdfs argument needs to be either a local path, an s3 path, or an s3 glob pattern...")
+                raise ValueError("pdfs parameter needs to be either a local path, an s3 path, or an s3 glob pattern...")
 
         logger.info(f"Found {len(pdf_work_paths):,} total pdf paths to add")
 
@@ -1118,18 +1142,68 @@ async def main():
             logger.warning("Could not read any PDFs to estimate average page count.")
             avg_pages_per_pdf = 10  # Default to 10 pages per PDF if sampling fails
 
-        items_per_group = max(1, int(args.pages_per_group / avg_pages_per_pdf))
+        items_per_group = max(1, int(pages_per_group / avg_pages_per_pdf))
         logger.info(f"Calculated items_per_group: {items_per_group} based on average pages per PDF: {avg_pages_per_pdf:.2f}")
 
         # Now call populate_queue
         await work_queue.populate_queue(pdf_work_paths, items_per_group)
 
-    if args.stats:
-        print_stats(args, work_queue)
+    if stats:
+        # Create a parameters object for compatibility with print_stats function
+        params = type('Parameters', (), {
+            'workspace': workspace,
+            'pdfs': pdfs,
+            'workspace_profile': workspace_profile,
+            'pdf_profile': pdf_profile,
+            'pages_per_group': pages_per_group,
+            'max_page_retries': max_page_retries,
+            'max_page_error_rate': max_page_error_rate,
+            'workers': workers,
+            'apply_filter': apply_filter,
+            'stats': stats,
+            'markdown': markdown,
+            'model': model,
+            'model_max_context': model_max_context,
+            'model_chat_template': model_chat_template,
+            'target_longest_image_dim': target_longest_image_dim,
+            'target_anchor_text_len': target_anchor_text_len,
+            'beaker': beaker,
+            'beaker_workspace': beaker_workspace,
+            'beaker_cluster': beaker_cluster,
+            'beaker_gpus': beaker_gpus,
+            'beaker_priority': beaker_priority,
+            'port': port
+        })()
+        print_stats(params, work_queue)
         return
 
-    if args.beaker:
-        submit_beaker_job(args)
+    if beaker:
+        # Create a parameters object for compatibility with submit_beaker_job function
+        params = type('Parameters', (), {
+            'workspace': workspace,
+            'pdfs': pdfs,
+            'workspace_profile': workspace_profile,
+            'pdf_profile': pdf_profile,
+            'pages_per_group': pages_per_group,
+            'max_page_retries': max_page_retries,
+            'max_page_error_rate': max_page_error_rate,
+            'workers': workers,
+            'apply_filter': apply_filter,
+            'stats': stats,
+            'markdown': markdown,
+            'model': model,
+            'model_max_context': model_max_context,
+            'model_chat_template': model_chat_template,
+            'target_longest_image_dim': target_longest_image_dim,
+            'target_anchor_text_len': target_anchor_text_len,
+            'beaker': beaker,
+            'beaker_workspace': beaker_workspace,
+            'beaker_cluster': beaker_cluster,
+            'beaker_gpus': beaker_gpus,
+            'beaker_priority': beaker_priority,
+            'port': port
+        })()
+        submit_beaker_job(params)
         return
 
     # If you get this far, then you are doing inference and need a GPU
@@ -1139,7 +1213,7 @@ async def main():
     logger.info(f"Starting pipeline with PID {os.getpid()}")
 
     # Download the model before you do anything else
-    model_name_or_path = await download_model(args.model)
+    model_name_or_path = await download_model(model)
 
     # Initialize the work queue
     qsize = await work_queue.initialize_queue()
@@ -1153,7 +1227,33 @@ async def main():
     # As soon as one worker is no longer saturating the gpu, the next one can start sending requests
     semaphore = asyncio.Semaphore(1)
 
-    sglang_server = asyncio.create_task(sglang_server_host(model_name_or_path, args, semaphore))
+    # Create a parameters object for compatibility with sglang_server_host function
+    params = type('Parameters', (), {
+        'workspace': workspace,
+        'pdfs': pdfs,
+        'workspace_profile': workspace_profile,
+        'pdf_profile': pdf_profile,
+        'pages_per_group': pages_per_group,
+        'max_page_retries': max_page_retries,
+        'max_page_error_rate': max_page_error_rate,
+        'workers': workers,
+        'apply_filter': apply_filter,
+        'stats': stats,
+        'markdown': markdown,
+        'model': model,
+        'model_max_context': model_max_context,
+        'model_chat_template': model_chat_template,
+        'target_longest_image_dim': target_longest_image_dim,
+        'target_anchor_text_len': target_anchor_text_len,
+        'beaker': beaker,
+        'beaker_workspace': beaker_workspace,
+        'beaker_cluster': beaker_cluster,
+        'beaker_gpus': beaker_gpus,
+        'beaker_priority': beaker_priority,
+        'port': port
+    })()
+
+    sglang_server = asyncio.create_task(sglang_server_host(model_name_or_path, params, semaphore))
 
     await sglang_server_ready()
 
@@ -1161,8 +1261,8 @@ async def main():
 
     # Create worker tasks to process the queue concurrently.
     worker_tasks = []
-    for i in range(args.workers):
-        task = asyncio.create_task(worker(args, work_queue, semaphore, worker_id=i))
+    for i in range(workers):
+        task = asyncio.create_task(worker(params, work_queue, semaphore, worker_id=i))
         worker_tasks.append(task)
 
     # Wait for all worker tasks to finish
@@ -1174,7 +1274,3 @@ async def main():
     sglang_server.cancel()
     metrics_task.cancel()
     logger.info("Work done")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
