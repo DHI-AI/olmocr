@@ -53,6 +53,6 @@ RUN pip install -r requirements.txt
 
 RUN apt update && apt install -y pciutils nvidia-utils-550 
 
-EXPOSE 5000
+EXPOSE 5001
 
 CMD ["python", "app.py"]

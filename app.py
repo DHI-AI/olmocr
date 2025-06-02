@@ -64,5 +64,5 @@ def pdf_ocr_extract(background_tasks: BackgroundTasks, payload: dict = Body(...)
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
+    port = int(os.getenv("PORT", 5001))
     uvicorn.run(app, host="0.0.0.0", port=port)
