@@ -45,6 +45,12 @@ RUN playwright install chromium
 COPY olmocr olmocr
 COPY scripts scripts
 
+COPY utils utils
+COPY app.py app.py
+COPY extract.py extract.py
+COPY requirements.txt requirements.txt
+RUN pip install -r requirements.txt
+
 RUN apt update && apt install -y pciutils nvidia-utils-550 
 
 EXPOSE 5000
