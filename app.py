@@ -6,9 +6,6 @@ import asyncio
 from extract import process_disclosure 
 app = FastAPI()
 
-# Import your main function (remove the CLI wrapper)
-from main import main
-
 async def process_disclosure_task(doc_url: str, document_id: str, source_system: str):
     try:
         print(f"Started processing {document_id}")
