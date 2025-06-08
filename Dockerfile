@@ -56,4 +56,4 @@ RUN apt update && apt install -y pciutils nvidia-utils-550
 
 EXPOSE 5001
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["./entrypoint.sh"]
