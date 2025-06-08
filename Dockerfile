@@ -46,6 +46,7 @@ COPY olmocr olmocr
 COPY scripts scripts
 
 COPY utils utils
+COPY entrypoint.sh entrypoint.sh
 COPY app.py app.py
 COPY extract.py extract.py
 COPY requirements.txt requirements.txt
@@ -55,4 +56,4 @@ RUN apt update && apt install -y pciutils nvidia-utils-550
 
 EXPOSE 5001
 
-CMD ["python", "app.py"]
+ENTRYPOINT ["/app/entrypoint.sh"]

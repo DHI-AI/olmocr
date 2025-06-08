@@ -37,7 +37,7 @@ async def process_disclosure(doc_url, document_id, source_system):
             pdfs=[local_pdf_path],  # Pass the local PDF path
             pages_per_group=500,
             workers=8,
-            model="allenai/olmOCR-7B-0225-preview",
+            model="ocr_model",
             # Add other parameters as needed
             apply_filter=False,
             markdown=True,  # Enable markdown output
