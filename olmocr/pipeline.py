@@ -1213,7 +1213,9 @@ async def main(
     logger.info(f"Starting pipeline with PID {os.getpid()}")
 
     # Download the model before you do anything else
-    model_name_or_path = await download_model(model)
+    # model_name_or_path = await download_model(model)
+    model_name_or_path = "ocr_model"
+
 
     # Initialize the work queue
     qsize = await work_queue.initialize_queue()
