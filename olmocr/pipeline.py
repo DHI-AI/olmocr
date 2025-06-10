@@ -11,6 +11,7 @@ import os
 import random
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -991,6 +992,22 @@ def print_stats(args, root_work_queue):
     print(f"Total tokens in long context documents: {long_context_tokens_total:,}")
 
 
+def cleanup_gpu_memory():
+    """Kill stray python processes using the GPU to free up memory (Linux only)."""
+    try:
+        result = subprocess.run([
+            'nvidia-smi', '--query-compute-apps=pid,process_name', '--format=csv,noheader'
+        ], capture_output=True, text=True)
+        for line in result.stdout.strip().split('\n'):
+            if not line.strip():
+                continue
+            pid, pname = [x.strip() for x in line.split(',')]
+            if pname.startswith('python') or pname.startswith('python3'):
+                subprocess.run(['kill', '-9', pid])
+    except Exception as e:
+        logger.warning(f"Could not clean up GPU memory: {e}")
+
+
 async def main(
     workspace,
     pdfs=None,
@@ -1232,7 +1249,7 @@ async def main(
     # If you get this far, then you are doing inference and need a GPU
     check_sglang_version()
     check_torch_gpu_available()
-
+    cleanup_gpu_memory()  # Clean up GPU memory before starting inference
     logger.info(f"Starting pipeline with PID {os.getpid()}")
 
     # Download the model before you do anything else
