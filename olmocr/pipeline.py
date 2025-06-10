@@ -328,6 +328,29 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
     )
 
 
+async def process_page_safe(args, worker_id, pdf_orig_path, pdf_local_path, page_num):
+    try:
+        return await process_page(args, worker_id, pdf_orig_path, pdf_local_path, page_num)
+    except Exception as e:
+        logger.error(f"Exception in process_page_safe for {pdf_orig_path}-{page_num}: {e}")
+        # Return a fallback PageResult (same as after max retries)
+        return PageResult(
+            pdf_orig_path,
+            page_num,
+            PageResponse(
+                natural_text=get_anchor_text(pdf_local_path, page_num, pdf_engine="pdftotext"),
+                primary_language=None,
+                is_rotation_valid=True,
+                rotation_correction=0,
+                is_table=False,
+                is_diagram=False,
+            ),
+            input_tokens=0,
+            output_tokens=0,
+            is_fallback=True,
+        )
+
+
 async def process_pdf(args, worker_id: int, pdf_orig_path: str):
     with tempfile.NamedTemporaryFile("wb+", suffix=".pdf") as tf:
         try:
@@ -367,10 +390,10 @@ async def process_pdf(args, worker_id: int, pdf_orig_path: str):
         try:
             async with asyncio.TaskGroup() as tg:
                 for page_num in range(1, num_pages + 1):
-                    task = tg.create_task(process_page(args, worker_id, pdf_orig_path, tf.name, page_num))
+                    task = tg.create_task(process_page_safe(args, worker_id, pdf_orig_path, tf.name, page_num))
                     page_tasks.append(task)
 
-            # Collect the results from the entire task group, assuming no exceptions
+            # Collect the results from the entire task group, even if some failed
             page_results = [task.result() for task in page_tasks]
 
             num_fallback_pages = sum(page_result.is_fallback for page_result in page_results)
@@ -1217,6 +1240,15 @@ async def main(
     model_name_or_path = "ocr_model"
 
 
+    # Re-initialize the global process_pool to avoid shutdown issues on repeated runs
+    global process_pool
+    if process_pool is not None:
+        try:
+            process_pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+    process_pool = ProcessPoolExecutor(max_workers=min(multiprocessing.cpu_count() // 2 + 1, 32), mp_context=multiprocessing.get_context("spawn"))
+
     # Initialize the work queue
     qsize = await work_queue.initialize_queue()
 
@@ -1226,7 +1258,6 @@ async def main(
     # Create a semaphore to control worker access
     # We only allow one worker to move forward with requests, until the server has no more requests in its queue
     # This lets us get full utilization by having many workers, but also to be outputting dolma docs as soon as possible
-    # As soon as one worker is no longer saturating the gpu, the next one can start sending requests
     semaphore = asyncio.Semaphore(1)
 
     # Create a parameters object for compatibility with sglang_server_host function
@@ -1272,7 +1303,3 @@ async def main(
 
     # Wait for server to stop
     process_pool.shutdown(wait=False)
-
-    sglang_server.cancel()
-    metrics_task.cancel()
-    logger.info("Work done")
