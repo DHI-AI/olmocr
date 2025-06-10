@@ -47,6 +47,7 @@ COPY scripts scripts
 
 COPY utils utils
 COPY entrypoint.sh entrypoint.sh
+RUN chmod +x entrypoint.sh
 COPY app.py app.py
 COPY extract.py extract.py
 COPY requirements.txt requirements.txt
