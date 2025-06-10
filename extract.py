@@ -3,6 +3,8 @@ import io
 import asyncio
 from utils.logger_utils import logger
 from utils.s3_utils import S3Utils
+import shutil
+import glob
 
 # Import your main function
 from olmocr.pipeline import main
@@ -46,18 +48,18 @@ async def process_disclosure(doc_url, document_id, source_system):
         )
 
         # After processing, upload results to S3
-        md_path = f"{workspace}/output/{document_id}.md"  # Adjust path based on main function output
+        md_path = f"{workspace}/markdown/*.md"  # Adjust path based on main function output
         # Find the JSONL file with the random string in the output directory
 
-        jsonl_pattern = f"{workspace}/output/output_*.jsonl"
+        jsonl_pattern = f"{workspace}/results/output_*.jsonl"
         jsonl_files = glob.glob(jsonl_pattern)
         if jsonl_files:
             json_path = jsonl_files[0]  # Take the first match
         else:
             json_path = None  # Or handle as needed
         
-        md_url = f"{root_dir}/{document_id}.md"
-        json_url = f"{root_dir}/{document_id}_content_list.json"
+        md_url = f"{root_dir}/{document_id}_olmocr.md"
+        json_url = f"{root_dir}/{document_id}_olmocr_content_list.json"
 
         # Upload results to S3
         if os.path.exists(md_path):
@@ -65,16 +67,12 @@ async def process_disclosure(doc_url, document_id, source_system):
         if os.path.exists(json_path):
             s3.upload_file_to_s3(json_path, json_url)
 
-        # Upload any generated images
-        s3.upload_images_to_s3(document_id)
-
         # Cleanup
         if local_pdf_path and os.path.exists(local_pdf_path):
             os.remove(local_pdf_path)
         
         # Clean up workspace
-        import shutil
-        import glob
+        
         if os.path.exists(workspace):
             shutil.rmtree(workspace)
 
