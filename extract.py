@@ -48,15 +48,16 @@ async def process_disclosure(doc_url, document_id, source_system):
         )
 
         # After processing, upload results to S3
-        md_path = f"{workspace}/markdown/*.md"  # Adjust path based on main function output
+        md_pattern = f"{workspace}/markdown/*.md"  # Adjust path based on main function output
         # Find the JSONL file with the random string in the output directory
 
         jsonl_pattern = f"{workspace}/results/output_*.jsonl"
         jsonl_files = glob.glob(jsonl_pattern)
-        if jsonl_files:
-            json_path = jsonl_files[0]  # Take the first match
-        else:
-            json_path = None  # Or handle as needed
+        # Find the Markdown file in the output directory
+        md_files = glob.glob(md_pattern)
+
+        md_path = md_files[0]  # Take the first match
+        json_path = jsonl_files[0]  # Take the first match           
         
         md_url = f"{root_dir}/{document_id}_olmocr.md"
         json_url = f"{root_dir}/{document_id}_olmocr_content_list.json"
