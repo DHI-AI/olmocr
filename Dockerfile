@@ -46,12 +46,12 @@ COPY olmocr olmocr
 COPY scripts scripts
 
 COPY utils utils
-COPY ocr_model ocr_model
+# COPY ocr_model ocr_model
 COPY entrypoint.sh entrypoint.sh
 RUN chmod +x entrypoint.sh
 COPY download_model.py download_model.py
 RUN chmod +x download_model.py
-RUN chmod -R 777 ocr_model
+# RUN chmod -R 777 ocr_model
 
 
 COPY app.py app.py
